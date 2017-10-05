@@ -7,6 +7,7 @@ import numpy.linalg as npalg
 import networkx as nx
 import matplotlib.pyplot as plt
 import libutil as utl
+from scipy.stats import entropy
 
 def vertex_sampling(graph, sample_ratio):
 
@@ -123,17 +124,47 @@ def cmpt_difference(org_stat, smp_stat) :
     assert len(org_stat) == len(smp_stat), "check input stat dict!"
     rmse_dict = {}
     maxdiff_dict = {}
+    kldvg_dict = {}
+    N = len(org_stat['degree'])
 
     for key, val in org_stat.items() :
+        # rmse and max difference
         rmse = np.sqrt(((org_stat[key] - smp_stat[key]) ** 2).mean())
         maxdiff = np.absolute(org_stat[key] - smp_stat[key]).max()
-        # rmse = npalg.norm(org_stat[key] - smp_stat[key])
         rmse_dict[key] = rmse
         maxdiff_dict[key] = maxdiff
-        # print "the rmse difference in {} is {}".format(key, rmse)
-        # print "the maximum difference in {} is {}".format(key, maxdiff)
 
-    return rmse_dict, maxdiff_dict
+        org_min = np.array(org_stat[key]).min()
+        org_max = np.array(org_stat[key]).max()
+        smp_min = np.array(smp_stat[key]).min()
+        smp_max = np.array(smp_stat[key]).max()
+        true_min = min(smp_min, org_min)
+        true_max = min(smp_max, org_max)
+
+        bin_edges = np.linspace(true_min, true_max, 11)
+
+        # print 'min of org {} is {}'.format(key, np.array(org_stat[key]).min())
+        # print 'max of org {} is {}'.format(key, np.array(org_stat[key]).max())
+
+        # print 'min of smp {} is {}'.format(key, np.array(smp_stat[key]).min())
+        # print 'max of smp {} is {}'.format(key, np.array(smp_stat[key]).max())
+
+        # kl divergence
+        hist_org, _ = np.histogram(np.array(org_stat[key]), bins=bin_edges) # / float(N)
+        hist_smp, _ = np.histogram(np.array(smp_stat[key]), bins=bin_edges) # / float(N)
+        hist_org = hist_org / float(N)
+        hist_smp = hist_smp / float(N)
+        hist_org[(hist_org == 0)] = 0.0001
+        hist_smp[(hist_smp == 0)] = 0.0001
+
+        # print 'histogram of org ', hist_org
+        # print 'histogram of smp ', hist_smp
+
+        kldvg = entropy(hist_org, hist_smp)
+        kldvg_dict[key] = kldvg
+        print 'kldvg of {} is {}'.format(key, kldvg_dict[key])
+
+    return rmse_dict, maxdiff_dict, kldvg_dict
 
 
 if __name__ == '__main__' :
@@ -168,6 +199,10 @@ if __name__ == '__main__' :
     max_cc = [0] * num_of_runs
     max_bet = [0] * num_of_runs
 
+    kldvg_deg = [0] * num_of_runs
+    kldvg_pr = [0] * num_of_runs
+    kldvg_cc = [0] * num_of_runs
+    kldvg_bet = [0] * num_of_runs
 
     for ind in range(num_of_runs) :
         ''' generate a random sampling of the graph '''
@@ -182,7 +217,7 @@ if __name__ == '__main__' :
         sampled_stat = cmpt_graph_stat(sub_graph, N)
 
         ''' calculate difference  '''
-        rmse_dict, max_dict = cmpt_difference(original_stat, sampled_stat)
+        rmse_dict, max_dict, kldvg_dict = cmpt_difference(original_stat, sampled_stat)
 
         rmse_deg[ind] = rmse_dict['degree']
         rmse_pr[ind] = rmse_dict['pagerank']
@@ -194,6 +229,11 @@ if __name__ == '__main__' :
         max_cc[ind] = max_dict['clustering coefficient']
         max_bet[ind] = max_dict['betweenness']
 
+        kldvg_deg[ind] = kldvg_dict['degree']
+        kldvg_pr[ind] = kldvg_dict['pagerank']
+        kldvg_cc[ind] = kldvg_dict['clustering coefficient']
+        kldvg_bet[ind] = kldvg_dict['betweenness']
+
     rmse_rst = {'degree' : rmse_deg, 'pagerank' : rmse_pr,\
             'clustering coefficient' : rmse_cc,\
             'betweenness' : rmse_bet, \
@@ -201,6 +241,7 @@ if __name__ == '__main__' :
             'pagerank_mean' : np.array(rmse_pr).mean(), \
             'cc_mean' : np.array(rmse_cc).mean(), \
             'bet_mean' : np.array(rmse_bet).mean()}
+
     max_rst = {'degree' : max_deg, 'pagerank' : max_pr, \
             'clustering coefficient' : max_cc, \
             'betweenness' : max_bet, \
@@ -208,6 +249,14 @@ if __name__ == '__main__' :
             'pagerank_mean' : np.array(max_pr).mean(), \
             'cc_mean' : np.array(max_cc).mean(), \
             'bet_mean' : np.array(max_bet).mean()}
+
+    kldvg_rst = {'degree' : kldvg_deg, 'pagerank' : kldvg_pr, \
+            'clustering coefficient' : kldvg_cc, \
+            'betweenness' : kldvg_bet, \
+            'degree_mean' : np.array(kldvg_deg).mean(), \
+            'pagerank_mean' : np.array(kldvg_pr).mean(), \
+            'cc_mean' : np.array(kldvg_cc).mean(), \
+            'bet_mean' : np.array(kldvg_bet).mean()}
 
     print 'rmse degree mean: {}'.format(rmse_rst['degree_mean'])
     print 'rmse pagerank mean: {}'.format(rmse_rst['pagerank_mean'])
@@ -218,6 +267,11 @@ if __name__ == '__main__' :
     print 'max pagerank mean: {}'.format(max_rst['pagerank_mean'])
     print 'max clustering coeff mean: {}'.format(max_rst['cc_mean'])
     print 'max betweenness mean: {}'.format(max_rst['bet_mean'])
+
+    print 'kldvg degree mean: {}'.format(kldvg_rst['degree_mean'])
+    print 'kldvg pagerank mean: {}'.format(kldvg_rst['pagerank_mean'])
+    print 'kldvg clustering coeff mean: {}'.format(kldvg_rst['cc_mean'])
+    print 'kldvg betweenness mean: {}'.format(kldvg_rst['bet_mean'])
 
     # # display sampled graph
     # plt.figure()
